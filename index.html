@@ -353,7 +353,74 @@
   </div>
   <div class="seghint" id="modeHint"></div>
   <div class="btn-line">
-    <button class…712 tokens truncated…","🛏️","📝","💰","🪞","🧢","🌿","📌"];
+    <button class="btn-sub" id="timeCancel">キャンセル</button>
+    <button class="btn-primary" id="timeOk">決定</button>
+  </div>
+</div>
+
+<div class="sheet" id="durSheet">
+  <div class="handle"></div>
+  <div class="stitle" id="durTitle">所要時間</div>
+  <div class="ssub">HOW LONG</div>
+  <div class="drum">
+    <div class="col" id="durCol" style="width:120px;"></div>
+  </div>
+  <div class="seghint" id="durHint" style="min-height:1.6em;"></div>
+  <div class="btn-line">
+    <button class="btn-sub" id="durCancel">キャンセル</button>
+    <button class="btn-primary" id="durOk">決定</button>
+  </div>
+</div>
+
+<div class="sheet" id="itemSheet">
+  <div class="handle"></div>
+  <div class="stitle">項目をつくる</div>
+  <div class="ssub">PICK ICON &amp; NAME</div>
+  <div class="emoji-grid" id="emojiGrid"></div>
+  <input class="text" type="text" id="newItemLabel" placeholder="例：水筒を用意する">
+  <div class="btn-line">
+    <button class="btn-sub" id="itemCancel">キャンセル</button>
+    <button class="btn-primary" id="itemOk">つくる</button>
+  </div>
+</div>
+
+<div class="sheet" id="copySheet">
+  <div class="handle"></div>
+  <div class="stitle">テキストでコピー</div>
+  <div class="ssub">PASTE ANYWHERE</div>
+  <textarea id="copyArea" readonly></textarea>
+  <div class="btn-line">
+    <button class="btn-sub" id="copyClose">閉じる</button>
+    <button class="btn-primary" id="copyDo">コピーする</button>
+  </div>
+</div>
+
+<script type="text/javascript">
+/* ---------- storage (persists on this device) ---------- */
+const mem = {};
+function sput(key, val){
+  const json = JSON.stringify(val);
+  mem[key] = json;
+  try{ localStorage.setItem(key, json); }catch(err){}
+}
+async function sget(key, fallback){
+  try{
+    const json = localStorage.getItem(key);
+    if(json !== null) return JSON.parse(json);
+  }catch(err){}
+  if(mem[key]){ try{ return JSON.parse(mem[key]); }catch(err){} }
+  return fallback;
+}
+
+/* ---------- data ---------- */
+const K_SCHEDULE='asajitaku:schedule', K_TEMPLATES='asajitaku:templates', K_LIBRARY='asajitaku:library';
+const DEFAULT_LIBRARY=[
+  {ic:"⏰",lb:"起床"},{ic:"🧼",lb:"洗顔"},{ic:"🚽",lb:"トイレ"},{ic:"🪥",lb:"歯みがき"},
+  {ic:"💧",lb:"水分補給"},{ic:"🍚",lb:"朝ごはん"},{ic:"👕",lb:"洗濯物をたたむ"},{ic:"🎒",lb:"持ち物準備"},
+  {ic:"👔",lb:"着替え"},{ic:"🧴",lb:"身だしなみ"},{ic:"✅",lb:"最終チェック"},{ic:"🚪",lb:"家を出る"},
+  {ic:"🚶",lb:"駅へ向かう"},{ic:"🚉",lb:"出発"},{ic:"🧹",lb:"かんたん掃除"},{ic:"🐹",lb:"ハムのお世話"}
+];
+const EMOJIS=["⏰","🧼","🚽","🪥","💧","🍚","☕","👕","🎒","👔","🧴","✅","🚪","🚶","🚉","🚌","🚗","🧹","🗑️","🐹","🐕","📚","💊","📱","💻","🔑","🍱","🧦","🌤️","🎵","🏃","🛏️","📝","💰","🪞","🧢","🌿","📌"];
 const DEFAULT_ITEMS=[
   {ic:"⏰",lb:"起床・洗顔・トイレ・歯みがき・水分補給",time:"7:00",dur:20},
   {ic:"👕",lb:"洗濯物をたたむ",time:"7:20",dur:10},
@@ -833,4 +900,3 @@ function migrate(items){
 </script>
 </body>
 </html>
-
