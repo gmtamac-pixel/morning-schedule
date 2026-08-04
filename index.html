@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>あさじたく</title>
+<style>
+  :root{
+    --night:#0e1219;      /* 夜明け前の地 */
+    --slate:#161d29;      /* パネル */
+    --slate-2:#1e2634;    /* 押下・副次 */
+    --edge:#2a3444;       /* 罫線 */
+    --led:#f5a623;        /* 発車標のアンバー */
+    --led-dim:rgba(245,166,35,.16);
+    --signal:#4fd1c5;     /* 進行信号の青緑 */
+    --text:#e8eaee;
+    --text-2:#8a94a6;
+    --danger:#f2616b;
+    --mono:"SF Mono",ui-monospace,"Roboto Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--night);color:var(--text);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",-apple-system,BlinkMacSystemFont,sans-serif;
+    overflow-x:hidden; -webkit-font-smoothing:antialiased;}
+  body::before{content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(ellipse 120% 60% at 50% -10%, rgba(245,166,35,.10), transparent 60%),
+      radial-gradient(ellipse 90% 50% at 10% 100%, rgba(79,209,197,.06), transparent 60%);}
+  body.locked{overflow:hidden; position:fixed; width:100%;}
+  .wrap{position:relative; z-index:1; max-width:560px; margin:0 auto; padding:0 18px 120px;}
+
+  /* ── 発車標ヘッダー ── */
+  .board{margin:20px 0 0; border:1px solid var(--edge); border-radius:6px; overflow:hidden;
+    background:linear-gradient(180deg,#131a25,#0f151e);
+    box-shadow:0 18px 40px -22px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.04);}
+  .board .strip{display:flex; align-items:center; justify-content:space-between;
+    padding:7px 12px; background:var(--slate); border-bottom:1px solid var(--edge);}
+  .board .strip span{font-family:var(--mono); font-size:9.5px; letter-spacing:.22em; color:var(--text-2);}
+  .board .strip .dotpair{display:flex; gap:5px;}
+  .board .strip i{width:5px; height:5px; border-radius:50%; background:var(--led); box-shadow:0 0 7px var(--led); display:block;}
+  .board .strip i:last-child{background:var(--edge); box-shadow:none;}
+  .board .body{padding:20px 18px 18px; position:relative;}
+  .board h1{margin:0; font-size:34px; font-weight:800; letter-spacing:.22em; line-height:1;
+    color:var(--text); text-indent:.22em;}
+  .board .en{font-family:var(--mono); font-size:10px; letter-spacing:.3em; color:var(--led); margin-top:9px;}
+  .board .meta{position:absolute; right:18px; top:20px; text-align:right;}
+  .board .meta .now{font-family:var(--mono); font-size:26px; font-weight:600; color:var(--led);
+    letter-spacing:.03em; text-shadow:0 0 16px rgba(245,166,35,.4);}
+  .board .meta .lbl{font-family:var(--mono); font-size:8.5px; letter-spacing:.2em; color:var(--text-2); margin-top:2px;}
+
+  /* ── タブ ── */
+  .tabs{display:flex; margin:18px 0 20px; border-bottom:1px solid var(--edge);}
+  .tab{flex:1; text-align:center; padding:12px 4px 11px; font-size:13px; font-weight:700;
+    color:var(--text-2); cursor:pointer; user-select:none; position:relative; letter-spacing:.06em;}
+  .tab.active{color:var(--text);}
+  .tab.active::after{content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--led);}
+
+  .panel{display:none;} .panel.active{display:block; animation:fade .28s ease;}
+  @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+  @media (prefers-reduced-motion: reduce){ .panel.active{animation:none;} }
+
+  /* ── 路線図タイムライン ── */
+  .runinfo{display:flex; justify-content:space-between; align-items:baseline; margin:0 2px 14px;
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; color:var(--text-2);}
+  .runinfo .dur{color:var(--signal);}
+
+  .route{position:relative;}
+  .stop{display:grid; grid-template-columns:58px 26px 1fr; align-items:stretch; position:relative;}
+  .stop .time{padding-top:16px; text-align:right; padding-right:2px;}
+  .stop .time .pin{display:block; font-size:9px; color:var(--signal); letter-spacing:.1em;
+    margin-bottom:1px; font-family:var(--mono);}
+  .stop.pinned .time button{color:var(--signal); text-shadow:0 0 12px rgba(79,209,197,.35);}
+  .stop.pinned .node{background:var(--signal); border-color:var(--signal);
+    box-shadow:0 0 0 4px rgba(79,209,197,.16), 0 0 14px rgba(79,209,197,.45);}
+  .stop.pinned .card{border-color:rgba(79,209,197,.4);}
+
+  .pintoggle{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--night); border:1px solid var(--edge); border-radius:7px;
+    padding:11px 13px; margin-top:12px; cursor:pointer;}
+  .pintoggle .t{font-size:12.5px; font-weight:700;}
+  .pintoggle .s{font-size:10px; color:var(--text-2); margin-top:3px; line-height:1.6;}
+  .pintoggle .sw{width:44px; height:26px; border-radius:100px; background:var(--edge);
+    position:relative; flex-shrink:0; transition:.2s;}
+  .pintoggle .sw::after{content:""; position:absolute; top:3px; left:3px; width:20px; height:20px;
+    border-radius:50%; background:#7b8698; transition:.2s;}
+  .pintoggle.on{border-color:rgba(79,209,197,.45);}
+  .pintoggle.on .sw{background:rgba(79,209,197,.3);}
+  .pintoggle.on .sw::after{left:21px; background:var(--signal);}
+  .stop .time button{background:none; border:none; padding:0; cursor:pointer;
+    font-family:var(--mono); font-size:17px; font-weight:600; color:var(--led); letter-spacing:.01em;
+    text-shadow:0 0 12px rgba(245,166,35,.28);}
+  .stop .time button:active{opacity:.6;}
+  .stop .rail{position:relative;}
+  .stop .rail::before{content:""; position:absolute; left:50%; transform:translateX(-50%);
+    top:0; bottom:0; width:2px; background:var(--edge);}
+  .stop:first-child .rail::before{top:22px;}
+  .stop:last-child .rail::before{bottom:calc(100% - 22px);}
+  .stop .node{position:absolute; left:50%; top:22px; transform:translate(-50%,-50%);
+    width:11px; height:11px; border-radius:50%; background:var(--night);
+    border:2px solid var(--led); z-index:2;}
+  .stop:last-child .node{width:15px; height:15px; background:var(--led); box-shadow:0 0 14px rgba(245,166,35,.5);}
+  .stop .card{background:var(--slate); border:1px solid var(--edge); border-radius:8px;
+    padding:11px 12px; margin-bottom:9px; display:flex; align-items:center; gap:11px;}
+  .stop .ic{font-size:21px; flex-shrink:0; width:26px; text-align:center;}
+  .stop .lbl{flex:1; min-width:0; font-size:14px; font-weight:600; line-height:1.45; letter-spacing:.02em;}
+  .stop .dur{display:inline-flex; align-items:center; gap:3px; margin-top:6px;
+    background:var(--night); border:1px solid var(--edge); color:var(--text-2);
+    border-radius:100px; padding:3px 9px; font-family:var(--mono); font-size:10px;
+    letter-spacing:.04em; cursor:pointer;}
+  .stop .dur:active{border-color:var(--signal); color:var(--signal);}
+  .stop .dur.off{opacity:.45;}
+  .stop .dur.mismatch{border-color:rgba(79,209,197,.4); color:var(--signal);}
+  .stop .ops{display:flex; gap:3px; flex-shrink:0;}
+  .stop .ops button{border:none; background:var(--slate-2); width:28px; height:28px; border-radius:6px;
+    font-size:12px; color:var(--text-2); cursor:pointer;}
+  .stop .ops button:active{background:var(--edge); color:var(--text);}
+  .stop .ops .rm:active{background:rgba(242,97,107,.2); color:var(--danger);}
+
+  .terminus{margin:2px 0 0 84px; font-family:var(--mono); font-size:9.5px; letter-spacing:.24em;
+    color:var(--led); opacity:.75;}
+
+  /* 区間の所要時間 */
+  .stop .gap{position:absolute; left:58px; width:26px; bottom:9px; height:22px;
+    display:flex; align-items:center; justify-content:center; z-index:3; pointer-events:none;}
+  .stop .gap b{font-family:var(--mono); font-size:8.5px; font-weight:600; color:var(--text-2);
+    background:var(--night); border-radius:3px; padding:2px 2px; letter-spacing:0;}
+  .stop.rev .time button{color:var(--danger); text-shadow:none;}
+  .stop.rev .gap b{color:var(--danger);}
+  .stop.rev .node{border-color:var(--danger);}
+
+  /* 時刻変更の確認 */
+  .diff{background:var(--night); border:1px solid var(--edge); border-radius:8px;
+    padding:14px; margin-bottom:14px;}
+  .diff .headline{display:flex; align-items:baseline; justify-content:center; gap:9px;
+    font-family:var(--mono); font-size:19px; font-weight:600; color:var(--text-2);}
+  .diff .headline .to{color:var(--led); text-shadow:0 0 12px rgba(245,166,35,.35);}
+  .diff .headline .arrow{font-size:13px;}
+  .diff .delta{text-align:center; font-family:var(--mono); font-size:10px; letter-spacing:.16em;
+    color:var(--signal); margin-top:7px;}
+  .diff .desc{font-size:12.5px; line-height:1.8; color:var(--text-2); margin-top:12px;
+    padding-top:12px; border-top:1px solid var(--edge);}
+  .diff .desc b{color:var(--text); font-weight:700;}
+  .diff .warn{color:var(--danger);}
+  .btn-line.stack{flex-direction:column;}
+
+  /* 連動モード切替 */
+  .seg{display:flex; gap:0; background:var(--night); border:1px solid var(--edge);
+    border-radius:7px; padding:3px; margin:14px 0 4px;}
+  .seg button{flex:1; border:none; background:transparent; color:var(--text-2);
+    font-size:11.5px; font-weight:700; padding:9px 2px; border-radius:5px; cursor:pointer;
+    letter-spacing:.02em;}
+  .seg button.on{background:var(--led-dim); color:var(--led); box-shadow:inset 0 0 0 1px rgba(245,166,35,.3);}
+  .seghint{font-size:10.5px; color:var(--text-2); text-align:center; line-height:1.7;
+    margin:8px 2px 2px; min-height:2.6em;}
+
+  .empty{text-align:center; color:var(--text-2); padding:38px 14px; font-size:13px;
+    border:1px dashed var(--edge); border-radius:8px; line-height:1.8;}
+
+  /* ── ボタン ── */
+  .btn-line{display:flex; gap:8px; margin-top:18px;}
+  .btn-line button{flex:1; border:1px solid transparent; border-radius:7px; padding:13px 8px;
+    font-size:13px; font-weight:700; cursor:pointer; letter-spacing:.06em;}
+  .btn-primary{background:var(--led); color:#1a1206;}
+  .btn-sub{background:var(--slate); color:var(--text); border-color:var(--edge) !important;}
+  .btn-ghost{background:transparent; color:var(--text-2); border-color:var(--edge) !important;}
+  .btn-danger{background:transparent; color:var(--danger); border-color:rgba(242,97,107,.3) !important;}
+
+  /* ── アイコン一覧 ── */
+  .sec{font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; color:var(--text-2);
+    margin:4px 0 12px 2px;}
+  .grid{display:grid; grid-template-columns:repeat(4,1fr); gap:7px;}
+  .cell{position:relative; background:var(--slate); border:1px solid var(--edge); border-radius:8px;
+    padding:13px 4px 10px; text-align:center; cursor:pointer;}
+  .cell:active{background:var(--slate-2); border-color:var(--led);}
+  .cell .ic{font-size:23px; display:block; pointer-events:none;}
+  .cell .lb{font-size:10px; margin-top:6px; font-weight:600; line-height:1.25; display:block;
+    pointer-events:none; color:var(--text-2); letter-spacing:.02em;}
+  .cell .x{position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%;
+    background:var(--danger); color:#fff; font-size:11px; line-height:22px; display:none;}
+  .grid.editing .cell .x{display:block;}
+  .grid.editing .cell{border-color:rgba(242,97,107,.35);}
+
+  /* ── テンプレート ── */
+  .tpl{background:var(--slate); border:1px solid var(--edge); border-radius:8px; padding:13px 14px;
+    margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:10px;}
+  .tpl .name{font-size:14.5px; font-weight:700; letter-spacing:.03em;}
+  .tpl .cnt{font-family:var(--mono); font-size:10px; color:var(--text-2); margin-top:5px; letter-spacing:.1em;}
+  .tpl .btns{display:flex; gap:6px; flex-shrink:0;}
+  .tpl .btns button{border:1px solid transparent; border-radius:6px; padding:8px 11px; font-size:12px;
+    font-weight:700; cursor:pointer;}
+  .tpl .load{background:var(--led); color:#1a1206;}
+  .tpl .del{background:transparent; color:var(--text-2); border-color:var(--edge) !important;}
+
+  .savebox{border:1px dashed var(--edge); border-radius:8px; padding:14px; margin-top:20px;}
+  .savebox .lab{font-family:var(--mono); font-size:9.5px; letter-spacing:.2em; color:var(--text-2); margin-bottom:10px;}
+  .savebox .row{display:flex; gap:8px;}
+  .savebox input{flex:1; min-width:0; background:var(--night); border:1px solid var(--edge); color:var(--text);
+    border-radius:7px; padding:11px 12px; font-size:16px;}
+  .savebox input::placeholder{color:#5a6474;}
+  .savebox button{border:none; background:var(--led); color:#1a1206; font-weight:800; padding:0 18px;
+    border-radius:7px; font-size:13px;}
+
+  .note{text-align:center; font-family:var(--mono); font-size:9px; letter-spacing:.14em;
+    color:#59627244; margin-top:30px; line-height:2;}
+
+  /* ── トースト ── */
+  .toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(16px);
+    background:var(--slate); border:1px solid var(--edge); color:var(--text); padding:11px 20px;
+    border-radius:100px; font-size:12.5px; font-weight:600; opacity:0; transition:.24s;
+    pointer-events:none; z-index:200; max-width:88%; text-align:center;
+    box-shadow:0 14px 34px -12px rgba(0,0,0,.9);}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  /* ── シート ── */
+  .backdrop{position:fixed; inset:0; background:rgba(4,7,12,.72); backdrop-filter:blur(3px);
+    opacity:0; pointer-events:none; transition:.22s; z-index:100;}
+  .backdrop.show{opacity:1; pointer-events:auto;}
+  .sheet{position:fixed; left:0; right:0; bottom:0; background:var(--slate); border-top:1px solid var(--edge);
+    border-radius:16px 16px 0 0; padding:16px 18px calc(22px + env(safe-area-inset-bottom));
+    transform:translateY(105%); transition:transform .3s cubic-bezier(.22,.85,.28,1); z-index:110;
+    max-width:560px; margin:0 auto;}
+  .sheet.show{transform:translateY(0);}
+  .sheet .handle{width:34px; height:3px; background:var(--edge); border-radius:3px; margin:0 auto 16px;}
+  .sheet .stitle{text-align:center; font-weight:700; font-size:15px; letter-spacing:.05em;}
+  .sheet .ssub{text-align:center; font-family:var(--mono); font-size:9.5px; letter-spacing:.16em;
+    color:var(--text-2); margin-top:5px; margin-bottom:16px;}
+  .sheet input.text{width:100%; background:var(--night); border:1px solid var(--edge); color:var(--text);
+    border-radius:7px; padding:12px 14px; font-size:16px; margin-bottom:12px;}
+  .sheet input.text::placeholder{color:#5a6474;}
+
+  /* ドラム(縦のみ) */
+  .drum{display:flex; justify-content:center; gap:2px; position:relative; height:180px;
+    margin-bottom:4px; overflow:hidden; touch-action:pan-y;}
+  .drum::after{content:""; position:absolute; left:26px; right:26px; top:72px; height:36px;
+    border-top:1px solid var(--led-dim); border-bottom:1px solid var(--led-dim);
+    background:rgba(245,166,35,.05); pointer-events:none;}
+  .drum::before{content:""; position:absolute; inset:0; pointer-events:none; z-index:3;
+    background:linear-gradient(var(--slate),rgba(22,29,41,0) 38%,rgba(22,29,41,0) 62%,var(--slate));}
+  .col{height:180px; width:84px; overflow-y:scroll; overflow-x:hidden; scroll-snap-type:y mandatory;
+    text-align:center; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    touch-action:pan-y; overscroll-behavior:contain;}
+  .col::-webkit-scrollbar{display:none;}
+  .col .pad{height:72px;}
+  .col .opt{height:36px; line-height:36px; font-family:var(--mono); font-size:21px; font-weight:600;
+    scroll-snap-align:center; color:#4e586a; transition:color .12s;}
+  .col .opt.sel{color:var(--led); text-shadow:0 0 14px rgba(245,166,35,.5);}
+  .colon{align-self:center; font-family:var(--mono); font-size:20px; color:var(--text-2); padding-bottom:3px;}
+
+  .emoji-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; max-height:168px;
+    overflow-y:auto; padding:2px; margin-bottom:14px; overscroll-behavior:contain;}
+  .emoji-grid div{font-size:22px; text-align:center; padding:7px 0; border-radius:7px;
+    background:var(--night); border:1px solid var(--edge); cursor:pointer;}
+  .emoji-grid div.sel{border-color:var(--led); background:var(--led-dim);}
+
+  #copyArea{width:100%; height:170px; background:var(--night); border:1px solid var(--edge);
+    color:var(--text); border-radius:8px; padding:14px; font-family:var(--mono); font-size:12.5px;
+    resize:none; margin-bottom:12px; line-height:1.9; letter-spacing:.04em;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="board">
+    <div class="strip">
+      <span>DEPARTURE PLAN</span>
+      <span class="dotpair"><i></i><i></i></span>
+    </div>
+    <div class="body">
+      <h1>あさじたく</h1>
+      <div class="en">MORNING ROUTINE BOARD</div>
+      <div class="meta">
+        <div class="now" id="clock">--:--</div>
+        <div class="lbl">NOW</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="schedule">時刻表</div>
+    <div class="tab" data-tab="add">項目</div>
+    <div class="tab" data-tab="templates">セット</div>
+  </div>
+
+  <div class="panel active" id="panel-schedule">
+    <div class="runinfo">
+      <span id="itemCount">0 STOPS</span>
+      <span class="dur" id="totalSpan"></span>
+    </div>
+    <div class="route" id="route"></div>
+    <div class="terminus" id="terminus" style="display:none;">— 終点 —</div>
+    <div class="empty" id="emptyMsg" style="display:none;">まだ予定がありません<br>「項目」タブからタップして組み立てよう</div>
+    <div class="btn-line">
+      <button class="btn-sub" id="rebuildBtn">所要時間で時刻を組み直す</button>
+    </div>
+    <div class="btn-line">
+      <button class="btn-primary" id="copyBtn">テキストでコピー</button>
+      <button class="btn-danger" id="clearBtn">全部消す</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-add">
+    <div class="sec">TAP TO ADD</div>
+    <div class="grid" id="iconGrid"></div>
+    <div class="empty" id="libEmpty" style="display:none;">項目がありません<br>下から作るか、標準セットを戻せます</div>
+    <div class="btn-line">
+      <button class="btn-primary" id="newItemBtn">＋ 項目をつくる</button>
+      <button class="btn-sub" id="editModeBtn">削除する</button>
+    </div>
+    <div class="btn-line">
+      <button class="btn-ghost" id="restoreBtn">標準の項目を戻す</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-templates">
+    <div class="sec">SAVED SETS</div>
+    <div id="tplList"></div>
+    <div class="empty" id="tplEmpty" style="display:none;">まだセットがありません<br>時刻表を作ってから保存してみよう</div>
+    <div class="savebox">
+      <div class="lab">SAVE CURRENT</div>
+      <div class="row">
+        <input type="text" id="tplNameInput" placeholder="例：平日セット">
+        <button id="tplSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">SHARED STORAGE ／ 同じリンクを開いた人と共有されます</div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="backdrop" id="backdrop"></div>
+
+<div class="sheet" id="timeSheet">
+  <div class="handle"></div>
+  <div class="stitle" id="timeSheetTitle">時刻を選ぶ</div>
+  <div class="ssub">SWIPE TO SET</div>
+  <div class="drum">
+    <div class="col" id="hourCol"></div>
+    <div class="colon">:</div>
+    <div class="col" id="minCol"></div>
+  </div>
+  <div class="pintoggle" id="pinToggle">
+    <div>
+      <div class="t">この時刻を固定する</div>
+      <div class="s" id="pinSub">所要時間を変えても、ここは動きません</div>
+    </div>
+    <div class="sw"></div>
+  </div>
+  <div class="seg" id="modeSeg">
+    <button data-mode="all">ぜんぶ連動</button>
+    <button data-mode="after">後ろだけ</button>
+    <button data-mode="one">単独</button>
+  </div>
+  <div class="seghint" id="modeHint"></div>
+  <div clas…714 tokens truncated…","🛏️","📝","💰","🪞","🧢","🌿","📌"];
+const DEFAULT_ITEMS=[
+  {ic:"⏰",lb:"起床・洗顔・トイレ・歯みがき・水分補給",time:"7:00",dur:20},
+  {ic:"👕",lb:"洗濯物をたたむ",time:"7:20",dur:10},
+  {ic:"🎒",lb:"持ち物準備",time:"7:30",dur:10},
+  {ic:"👔",lb:"着替え",time:"7:40",dur:10},
+  {ic:"✅",lb:"玄関で最終チェック・忘れ物確認",time:"7:50",dur:5},
+  {ic:"🚪",lb:"家を出る",time:"7:55",dur:15},
+  {ic:"🚉",lb:"清水発",time:"8:10",dur:0}
+];
+let schedule=[], templates=[], library=[], editing=false;
+const uid=()=>Math.random().toString(36).slice(2,9);
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),1700);
+}
+function goTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>goTab(t.dataset.tab)));
+
+/* ---------- clock ---------- */
+function tickClock(){
+  const d=new Date();
+  document.getElementById('clock').textContent =
+    String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+tickClock(); setInterval(tickClock, 20000);
+
+/* ---------- library ---------- */
+function renderIconGrid(){
+  const grid=document.getElementById('iconGrid');
+  grid.innerHTML='';
+  document.getElementById('libEmpty').style.display = library.length ? 'none' : 'block';
+  library.forEach(item=>{
+    const cell=document.createElement('div');
+    cell.className='cell';
+    cell.innerHTML=`<span class="ic">${item.ic}</span><span class="lb">${item.lb}</span><span class="x">✕</span>`;
+    cell.addEventListener('click',()=>{
+      if(editing){
+        library=library.filter(c=>c.id!==item.id);
+        sput(K_LIBRARY, library); renderIconGrid();
+        toast('「'+item.lb+'」を消しました');
+      }else{ addTask(item.ic, item.lb); }
+    });
+    grid.appendChild(cell);
+  });
+  grid.classList.toggle('editing', editing);
+}
+document.getElementById('editModeBtn').addEventListener('click',()=>{
+  editing=!editing;
+  const b=document.getElementById('editModeBtn');
+  b.textContent = editing ? '完了' : '削除する';
+  b.className = editing ? 'btn-primary' : 'btn-sub';
+  renderIconGrid();
+  if(editing) toast('消したい項目をタップしてね');
+});
+document.getElementById('restoreBtn').addEventListener('click',()=>{
+  const have=new Set(library.map(i=>i.ic+i.lb));
+  let added=0;
+  DEFAULT_LIBRARY.forEach(d=>{ if(!have.has(d.ic+d.lb)){ library.push({...d,id:uid()}); added++; } });
+  sput(K_LIBRARY, library); renderIconGrid();
+  toast(added ? added+'件を戻しました' : 'すべて揃っています');
+});
+
+/* ---------- schedule ---------- */
+function nextTime(){
+  if(!schedule.length) return '7:00';
+  const last = schedule[schedule.length-1];
+  return fromMin(toMin(last.time) + (last.dur ?? 10));
+}
+function addTask(ic,lb){
+  schedule.push({id:uid(),ic,lb,time:nextTime(),dur:10});
+  sput(K_SCHEDULE, schedule); renderSchedule();
+  toast(lb+' を追加しました');
+}
+function toMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
+
+function renderSchedule(){
+  const route=document.getElementById('route'), empty=document.getElementById('emptyMsg'),
+        term=document.getElementById('terminus');
+  route.innerHTML='';
+  if(!schedule.length){
+    empty.style.display='block'; route.style.display='none'; term.style.display='none';
+  }else{
+    empty.style.display='none'; route.style.display='block'; term.style.display='block';
+    schedule.forEach((item,idx)=>{
+      const el=document.createElement('div');
+      el.className='stop';
+      let gapHtml='';
+      let gap=null;
+      if(idx < schedule.length-1){
+        gap = toMin(schedule[idx+1].time) - toMin(item.time);
+        if(gap < 0) el.classList.add('rev');
+        gapHtml = `<div class="gap"><b>${gap<0?'!':gap+'分'}</b></div>`;
+      }
+      const dur = item.dur ?? 0;
+      let durCls='dur', durTxt = dur ? '⏱ '+dur+'分' : '⏱ 未設定';
+      if(!dur) durCls+=' off';
+      else if(gap !== null && gap >= 0 && gap !== dur){
+        durCls+=' mismatch';
+        durTxt = '⏱ '+dur+'分 / 枠'+gap+'分';
+      }
+      if(item.pin) el.classList.add('pinned');
+      el.innerHTML=`
+        <div class="time">${item.pin?'<span class="pin">固定</span>':''}<button data-act="time" data-id="${item.id}">${item.time}</button></div>
+        <div class="rail"><span class="node"></span></div>
+        ${gapHtml}
+        <div class="card">
+          <div class="ic">${item.ic}</div>
+          <div class="lbl">${item.lb}<br><span class="${durCls}" data-act="dur" data-id="${item.id}">${durTxt}</span></div>
+          <div class="ops">
+            <button data-act="up" data-id="${item.id}" ${idx===0?'style="opacity:.25"':''}>↑</button>
+            <button data-act="down" data-id="${item.id}" ${idx===schedule.length-1?'style="opacity:.25"':''}>↓</button>
+            <button class="rm" data-act="del" data-id="${item.id}">✕</button>
+          </div>
+        </div>`;
+      route.appendChild(el);
+    });
+  }
+  const pinned = schedule.find(s=>s.pin);
+  document.getElementById('itemCount').textContent =
+    schedule.length + ' STOPS' + (pinned ? '　📌 '+pinned.time+' 固定' : '');
+  if(schedule.length){
+    const last = schedule[schedule.length-1];
+    const end = last.dur ? fromMin(toMin(last.time) + last.dur) : last.time;
+    term.textContent = last.dur ? `— 終点 ${end} —` : '— 終点 —';
+  }
+  const dur=document.getElementById('totalSpan');
+  if(schedule.length>=2){
+    let diff = toMin(schedule[schedule.length-1].time) - toMin(schedule[0].time);
+    if(diff < 0) diff += 1440;
+    dur.textContent = schedule[0].time+' → '+schedule[schedule.length-1].time+'　'+diff+' MIN';
+  } else dur.textContent='';
+}
+function anchorIndex(){
+  const i = schedule.findIndex(s=>s.pin);
+  return i === -1 ? 0 : i;
+}
+function rebuildTimes(){
+  if(!schedule.length) return;
+  const a = anchorIndex();
+  let t = toMin(schedule[a].time);
+  for(let i=a; i<schedule.length; i++){ schedule[i].time = fromMin(t); t += (schedule[i].dur ?? 0); }
+  t = toMin(schedule[a].time);
+  for(let i=a-1; i>=0; i--){ t -= (schedule[i].dur ?? 0); schedule[i].time = fromMin(t); }
+}
+
+document.getElementById('route').addEventListener('click',(e)=>{
+  const chip=e.target.closest('[data-act="dur"]');
+  if(chip){ openDurSheet(chip.dataset.id); return; }
+  const btn=e.target.closest('button[data-act]'); if(!btn) return;
+  const id=btn.dataset.id, idx=schedule.findIndex(s=>s.id===id); if(idx===-1) return;
+  const act=btn.dataset.act;
+  if(act==='time'){ openTimeSheet(id); return; }
+  if(act==='del'){
+    schedule.splice(idx,1);
+    rebuildTimes();
+  }
+  else if(act==='up'&&idx>0){
+    [schedule[idx-1],schedule[idx]]=[schedule[idx],schedule[idx-1]];
+    rebuildTimes();
+  }
+  else if(act==='down'&&idx<schedule.length-1){
+    [schedule[idx+1],schedule[idx]]=[schedule[idx],schedule[idx+1]];
+    rebuildTimes();
+  }
+  sput(K_SCHEDULE, schedule); renderSchedule();
+});
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  if(!schedule.length){ toast('時刻表は空です'); return; }
+  if(confirm('時刻表をすべて消しますか？')){
+    schedule=[]; sput(K_SCHEDULE, schedule); renderSchedule(); toast('空にしました');
+  }
+});
+
+/* ---------- copy ---------- */
+function buildText(){
+  if(!schedule.length) return '';
+  let out='⏰ 出発までの流れ\n\n';
+  schedule.forEach(i=>{ out+=`${i.time}　${i.lb}\n`; });
+  return out.trim();
+}
+document.getElementById('copyBtn').addEventListener('click', async ()=>{
+  const text=buildText();
+  if(!text){ toast('時刻表が空です'); return; }
+  document.getElementById('copyArea').value=text;
+  openSheet('copySheet');
+  try{ await navigator.clipboard.writeText(text); toast('コピーしました'); }
+  catch(err){ toast('下のボタンでコピーしてね'); }
+});
+document.getElementById('copyDo').addEventListener('click', async ()=>{
+  const ta=document.getElementById('copyArea');
+  try{ await navigator.clipboard.writeText(ta.value); toast('コピーしました'); }
+  catch(err){
+    ta.removeAttribute('readonly'); ta.select(); ta.setSelectionRange(0,99999);
+    let ok=false; try{ ok=document.execCommand('copy'); }catch(e){}
+    ta.setAttribute('readonly','');
+    toast(ok?'コピーしました':'テキストを長押しでコピーしてね');
+  }
+});
+document.getElementById('copyClose').addEventListener('click', closeSheets);
+
+/* ---------- sheets ---------- */
+function openSheet(id){
+  document.getElementById('backdrop').classList.add('show');
+  document.getElementById(id).classList.add('show');
+  document.body.classList.add('locked');
+}
+function closeSheets(){
+  document.getElementById('backdrop').classList.remove('show');
+  document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('show'));
+  document.body.classList.remove('locked');
+}
+document.getElementById('backdrop').addEventListener('click', closeSheets);
+
+/* ---------- drum ---------- */
+let pickTargetId=null;
+const hourCol=document.getElementById('hourCol'), minCol=document.getElementById('minCol');
+function buildCol(col,values){
+  col.innerHTML='<div class="pad"></div>'+values.map(v=>`<div class="opt" data-v="${v}">${v}</div>`).join('')+'<div class="pad"></div>';
+}
+buildCol(hourCol, Array.from({length:24},(_,i)=>String(i).padStart(2,'0')));
+buildCol(minCol,  Array.from({length:60},(_,i)=>String(i).padStart(2,'0')));
+function markSelected(col){
+  const opts=[...col.querySelectorAll('.opt')];
+  const i=Math.max(0,Math.min(opts.length-1,Math.round(col.scrollTop/36)));
+  opts.forEach((o,k)=>o.classList.toggle('sel',k===i));
+  return opts[i];
+}
+[hourCol,minCol].forEach(col=>{
+  col.addEventListener('scroll',()=>markSelected(col),{passive:true});
+  col.addEventListener('touchmove',(e)=>e.stopPropagation(),{passive:true});
+});
+function scrollToVal(col,value){
+  const opts=[...col.querySelectorAll('.opt')];
+  const i=Math.max(0,opts.findIndex(o=>o.dataset.v===value));
+  col.scrollTop=i*36; markSelected(col);
+}
+function readCol(col){ const s=col.querySelector('.opt.sel')||markSelected(col); return s?s.dataset.v:'00'; }
+
+let pinDraft = false;
+function renderPin(){
+  const el=document.getElementById('pinToggle');
+  el.classList.toggle('on', pinDraft);
+  document.getElementById('pinSub').textContent = pinDraft
+    ? 'ここを基準に、前後の予定が所要時間で計算されます'
+    : '所要時間を変えても、ここは動きません';
+}
+document.getElementById('pinToggle').addEventListener('click',()=>{ pinDraft=!pinDraft; renderPin(); });
+
+function openTimeSheet(id){
+  pickTargetId=id;
+  const item=schedule.find(s=>s.id===id);
+  document.getElementById('timeSheetTitle').textContent=item.ic+' '+item.lb;
+  pinDraft = !!item.pin;
+  renderPin();
+  openSheet('timeSheet');
+  renderSeg();
+  const [h,m]=item.time.split(':');
+  requestAnimationFrame(()=>{
+    scrollToVal(hourCol,String(Number(h)).padStart(2,'0'));
+    scrollToVal(minCol,String(m).padStart(2,'0'));
+  });
+}
+document.getElementById('timeCancel').addEventListener('click', closeSheets);
+function fromMin(t){
+  t=((t%1440)+1440)%1440;
+  return Math.floor(t/60)+':'+String(t%60).padStart(2,'0');
+}
+function shiftFrom(startIdx, delta){
+  for(let i=startIdx; i<schedule.length; i++){
+    schedule[i].time = fromMin(toMin(schedule[i].time) + delta);
+  }
+}
+function commit(msg){
+  sput(K_SCHEDULE, schedule); renderSchedule(); closeSheets();
+  if(msg) toast(msg);
+}
+function signed(d){ return (d>0?'+':'−') + Math.abs(d) + '分'; }
+
+let shiftMode = 'all';
+const MODE_HINT = {
+  all:   'この予定を動かすと、前も後ろも同じだけ動きます。<br>間隔はそのまま、全体が前後にスライドします。',
+  after: 'この予定から後ろだけ動きます。<br>前の予定はそのままなので、準備時間が伸び縮みします。',
+  one:   'この予定だけを動かします。<br>ほかの時刻には影響しません。'
+};
+function renderSeg(){
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on', b.dataset.mode===shiftMode));
+  document.getElementById('modeHint').innerHTML = MODE_HINT[shiftMode];
+}
+document.getElementById('modeSeg').addEventListener('click',(e)=>{
+  const b=e.target.closest('button[data-mode]'); if(!b) return;
+  shiftMode=b.dataset.mode; renderSeg();
+});
+
+document.getElementById('timeOk').addEventListener('click',()=>{
+  const idx = schedule.findIndex(s=>s.id===pickTargetId);
+  if(idx===-1){ closeSheets(); return; }
+  const oldT = schedule[idx].time;
+  const newT = String(Number(readCol(hourCol)))+':'+readCol(minCol);
+
+  const pinChanged = !!schedule[idx].pin !== pinDraft;
+  if(pinChanged){
+    schedule.forEach(s=>delete s.pin);
+    if(pinDraft) schedule[idx].pin = true;
+  }
+
+  if(newT === oldT){
+    if(pinChanged){
+      sput(K_SCHEDULE, schedule); renderSchedule(); closeSheets();
+      toast(pinDraft ? '「'+schedule[idx].lb+'」を固定しました' : '固定を解除しました');
+    }else closeSheets();
+    return;
+  }
+
+  let delta = toMin(newT) - toMin(oldT);
+  if(delta > 720) delta -= 1440;
+  if(delta < -720) delta += 1440;
+
+  if(shiftMode === 'all')        shiftFrom(0, delta);
+  else if(shiftMode === 'after') shiftFrom(idx, delta);
+  else                           schedule[idx].time = newT;
+
+  sput(K_SCHEDULE, schedule);
+  renderSchedule();
+  closeSheets();
+
+  const label = shiftMode==='all' ? '全体を' : shiftMode==='after' ? 'ここから後ろを' : 'この予定だけ';
+  toast(label + (shiftMode==='one' ? '変更しました' : signed(delta)+'ずらしました'));
+
+  // 前後が逆転していたら知らせる
+  const rev = schedule.some((s,i)=> i>0 && toMin(s.time) < toMin(schedule[i-1].time));
+  if(rev) setTimeout(()=>toast('⚠️ 前の予定より早い時刻があります'), 1900);
+});
+
+/* ---------- 所要時間 ---------- */
+const DUR_VALUES = [0,1,2,3,4,5,6,7,8,9,10,12,15,18,20,25,30,35,40,45,50,55,60,70,80,90,100,110,120,150,180];
+buildCol(document.getElementById('durCol'), DUR_VALUES.map(v=>String(v)));
+const durCol=document.getElementById('durCol');
+durCol.addEventListener('scroll',()=>{ markSelected(durCol); updateDurHint(); },{passive:true});
+durCol.addEventListener('touchmove',(e)=>e.stopPropagation(),{passive:true});
+
+let durTargetId=null;
+function updateDurHint(){
+  const v=Number(readCol(durCol));
+  const idx=schedule.findIndex(s=>s.id===durTargetId);
+  let msg = v===0 ? '所要時間なし（一瞬で終わるもの）' : v+'分かかる予定';
+  if(idx>-1 && idx<schedule.length-1){
+    const gap = toMin(schedule[idx+1].time) - toMin(schedule[idx].time);
+    if(gap>=0 && v>gap) msg += `　⚠️ 枠は${gap}分`;
+    else if(gap>=0 && v<gap) msg += `　余裕${gap-v}分`;
+  }
+  document.getElementById('durHint').textContent = msg;
+}
+function nearestDur(v){
+  return DUR_VALUES.reduce((a,b)=> Math.abs(b-v)<Math.abs(a-v)?b:a, DUR_VALUES[0]);
+}
+function openDurSheet(id){
+  durTargetId=id;
+  const item=schedule.find(s=>s.id===id); if(!item) return;
+  document.getElementById('durTitle').textContent=item.ic+' '+item.lb;
+  openSheet('durSheet');
+  requestAnimationFrame(()=>{
+    scrollToVal(durCol, String(nearestDur(item.dur ?? 10)));
+    updateDurHint();
+  });
+}
+document.getElementById('durCancel').addEventListener('click', closeSheets);
+document.getElementById('durOk').addEventListener('click',()=>{
+  const item=schedule.find(s=>s.id===durTargetId);
+  if(item){
+    item.dur = Number(readCol(durCol));
+    const pinned = schedule.find(s=>s.pin);
+    rebuildTimes();
+    sput(K_SCHEDULE, schedule); renderSchedule();
+    toast(pinned
+      ? '所要時間を'+item.dur+'分に。'+pinned.time+'を固定して組み直しました'
+      : '所要時間を'+item.dur+'分にしました');
+  }
+  closeSheets();
+});
+
+document.getElementById('rebuildBtn').addEventListener('click',()=>{
+  if(schedule.length<2){ toast('予定が足りません'); return; }
+  const start = schedule[0].time;
+  rebuildTimes();
+  sput(K_SCHEDULE, schedule); renderSchedule();
+  toast(start+'から所要時間どおりに組み直しました');
+});
+
+/* ---------- new item ---------- */
+let pickedEmoji='📌';
+function renderEmojiGrid(){
+  const g=document.getElementById('emojiGrid'); g.innerHTML='';
+  EMOJIS.forEach(e=>{
+    const d=document.createElement('div');
+    d.textContent=e; d.classList.toggle('sel',e===pickedEmoji);
+    d.addEventListener('click',()=>{ pickedEmoji=e; renderEmojiGrid(); });
+    g.appendChild(d);
+  });
+}
+document.getElementById('newItemBtn').addEventListener('click',()=>{
+  pickedEmoji='📌'; document.getElementById('newItemLabel').value='';
+  renderEmojiGrid(); openSheet('itemSheet');
+});
+document.getElementById('itemCancel').addEventListener('click', closeSheets);
+document.getElementById('itemOk').addEventListener('click',()=>{
+  const lb=document.getElementById('newItemLabel').value.trim();
+  if(!lb){ toast('名前を入力してください'); return; }
+  library.push({id:uid(), ic:pickedEmoji, lb});
+  sput(K_LIBRARY, library); renderIconGrid(); closeSheets();
+  toast('「'+lb+'」をつくりました');
+});
+
+/* ---------- templates ---------- */
+function renderTemplates(){
+  const list=document.getElementById('tplList');
+  document.getElementById('tplEmpty').style.display = templates.length ? 'none' : 'block';
+  list.innerHTML='';
+  templates.forEach(tpl=>{
+    const c=document.createElement('div'); c.className='tpl';
+    c.innerHTML=`<div>
+        <div class="name">${tpl.name}</div>
+        <div class="cnt">${tpl.items.length} STOPS ／ ${tpl.items[0]?.time||''} → ${tpl.items[tpl.items.length-1]?.time||''}</div>
+      </div><div class="btns">
+        <button class="load" data-id="${tpl.id}" data-act="load">読込</button>
+        <button class="del" data-id="${tpl.id}" data-act="del">削除</button>
+      </div>`;
+    list.appendChild(c);
+  });
+}
+document.getElementById('tplList').addEventListener('click',(e)=>{
+  const btn=e.target.closest('button[data-act]'); if(!btn) return;
+  const tpl=templates.find(t=>t.id===btn.dataset.id); if(!tpl) return;
+  if(btn.dataset.act==='load'){
+    schedule=tpl.items.map(it=>({...it,id:uid()}));
+    sput(K_SCHEDULE, schedule); renderSchedule(); goTab('schedule');
+    toast(tpl.name+' を読み込みました');
+  }else{
+    templates=templates.filter(t=>t.id!==tpl.id);
+    sput(K_TEMPLATES, templates); renderTemplates(); toast('削除しました');
+  }
+});
+document.getElementById('tplSaveBtn').addEventListener('click',()=>{
+  const inp=document.getElementById('tplNameInput'), name=inp.value.trim();
+  if(!name){ toast('セット名を入力してください'); return; }
+  if(!schedule.length){ toast('時刻表が空です'); return; }
+  templates.push({id:uid(), name, items:schedule.map(({id,...r})=>r)});
+  sput(K_TEMPLATES, templates); renderTemplates(); inp.value='';
+  toast('「'+name+'」を保存しました');
+});
+
+function migrate(items){
+  return items.map((s,i)=>{
+    if(typeof s.dur === 'number') return s;
+    let d = 0;
+    if(i < items.length-1){
+      d = toMin(items[i+1].time) - toMin(s.time);
+      if(d < 0) d = 0;
+    }
+    return {...s, dur:d};
+  });
+}
+
+/* ---------- boot ---------- */
+(async function boot(){
+  schedule  = migrate(await sget(K_SCHEDULE,null)  || DEFAULT_ITEMS.map(i=>({...i,id:uid()})));
+  templates = await sget(K_TEMPLATES,null) || [{id:'default-weekday', name:'平日セット（見本）', items:DEFAULT_ITEMS}];
+  library   = await sget(K_LIBRARY,null)   || DEFAULT_LIBRARY.map(i=>({...i,id:uid()}));
+  renderIconGrid(); renderSchedule(); renderTemplates();
+})();
+</script>
+</body>
+</html>
